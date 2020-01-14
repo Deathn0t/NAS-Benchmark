@@ -1,0 +1,9 @@
+.vscode
+.pytest_cache
+data/
+*.log
+*.pyc
+.DS_Store
+events.out.tfevents.*
+*.dot
+*.png

@@ -5,23 +5,32 @@ import genotypes as gt
 
 
 OPS = {
-    'none': lambda C, stride, affine: Zero(stride),
-    'avg_pool_3x3': lambda C, stride, affine: PoolBN('avg', C, 3, stride, 1, affine=affine),
-    'max_pool_3x3': lambda C, stride, affine: PoolBN('max', C, 3, stride, 1, affine=affine),
-    'skip_connect': lambda C, stride, affine: \
-        Identity() if stride == 1 else FactorizedReduce(C, C, affine=affine),
-    'sep_conv_3x3': lambda C, stride, affine: SepConv(C, C, 3, stride, 1, affine=affine),
-    'sep_conv_5x5': lambda C, stride, affine: SepConv(C, C, 5, stride, 2, affine=affine),
-    'sep_conv_7x7': lambda C, stride, affine: SepConv(C, C, 7, stride, 3, affine=affine),
-    'dil_conv_3x3': lambda C, stride, affine: DilConv(C, C, 3, stride, 2, 2, affine=affine), # 5x5
-    'dil_conv_5x5': lambda C, stride, affine: DilConv(C, C, 5, stride, 4, 2, affine=affine), # 9x9
-    'conv_7x1_1x7': lambda C, stride, affine: FacConv(C, C, 7, stride, 3, affine=affine)
+    "none": lambda C, stride, affine: Zero(stride),
+    "avg_pool_3x3": lambda C, stride, affine: PoolBN(
+        "avg", C, 3, stride, 1, affine=affine
+    ),
+    "max_pool_3x3": lambda C, stride, affine: PoolBN(
+        "max", C, 3, stride, 1, affine=affine
+    ),
+    "skip_connect": lambda C, stride, affine: Identity()
+    if stride == 1
+    else FactorizedReduce(C, C, affine=affine),
+    "sep_conv_3x3": lambda C, stride, affine: SepConv(C, C, 3, stride, 1, affine=affine),
+    "sep_conv_5x5": lambda C, stride, affine: SepConv(C, C, 5, stride, 2, affine=affine),
+    "sep_conv_7x7": lambda C, stride, affine: SepConv(C, C, 7, stride, 3, affine=affine),
+    "dil_conv_3x3": lambda C, stride, affine: DilConv(
+        C, C, 3, stride, 2, 2, affine=affine
+    ),  # 5x5
+    "dil_conv_5x5": lambda C, stride, affine: DilConv(
+        C, C, 5, stride, 4, 2, affine=affine
+    ),  # 9x9
+    "conv_7x1_1x7": lambda C, stride, affine: FacConv(C, C, 7, stride, 3, affine=affine),
 }
 
 
 def drop_path_(x, drop_prob, training):
-    if training and drop_prob > 0.:
-        keep_prob = 1. - drop_prob
+    if training and drop_prob > 0.0:
+        keep_prob = 1.0 - drop_prob
         # per data point mask; assuming x in cuda.
         mask = torch.cuda.FloatTensor(x.size(0), 1, 1, 1).bernoulli_(keep_prob)
         x.div_(keep_prob).mul_(mask)
@@ -30,7 +39,7 @@ def drop_path_(x, drop_prob, training):
 
 
 class DropPath_(nn.Module):
-    def __init__(self, p=0.):
+    def __init__(self, p=0.0):
         """ [!] DropPath is inplace module
         Args:
             p: probability of an path to be zeroed.
@@ -39,7 +48,7 @@ class DropPath_(nn.Module):
         self.p = p
 
     def extra_repr(self):
-        return 'p={}, inplace'.format(self.p)
+        return "p={}, inplace".format(self.p)
 
     def forward(self, x):
         drop_path_(x, self.p, self.training)
@@ -51,16 +60,19 @@ class PoolBN(nn.Module):
     """
     AvgPool or MaxPool - BN
     """
+
     def __init__(self, pool_type, C, kernel_size, stride, padding, affine=True):
         """
         Args:
             pool_type: 'max' or 'avg'
         """
         super().__init__()
-        if pool_type.lower() == 'max':
+        if pool_type.lower() == "max":
             self.pool = nn.MaxPool2d(kernel_size, stride, padding)
-        elif pool_type.lower() == 'avg':
-            self.pool = nn.AvgPool2d(kernel_size, stride, padding, count_include_pad=False)
+        elif pool_type.lower() == "avg":
+            self.pool = nn.AvgPool2d(
+                kernel_size, stride, padding, count_include_pad=False
+            )
         else:
             raise ValueError()
 
@@ -76,12 +88,13 @@ class StdConv(nn.Module):
     """ Standard conv
     ReLU - Conv - BN
     """
+
     def __init__(self, C_in, C_out, kernel_size, stride, padding, affine=True):
         super().__init__()
         self.net = nn.Sequential(
             nn.ReLU(),
             nn.Conv2d(C_in, C_out, kernel_size, stride, padding, bias=False),
-            nn.BatchNorm2d(C_out, affine=affine)
+            nn.BatchNorm2d(C_out, affine=affine),
         )
 
     def forward(self, x):
@@ -92,13 +105,14 @@ class FacConv(nn.Module):
     """ Factorized conv
     ReLU - Conv(Kx1) - Conv(1xK) - BN
     """
+
     def __init__(self, C_in, C_out, kernel_length, stride, padding, affine=True):
         super().__init__()
         self.net = nn.Sequential(
             nn.ReLU(),
             nn.Conv2d(C_in, C_in, (kernel_length, 1), stride, padding, bias=False),
             nn.Conv2d(C_in, C_out, (1, kernel_length), stride, padding, bias=False),
-            nn.BatchNorm2d(C_out, affine=affine)
+            nn.BatchNorm2d(C_out, affine=affine),
         )
 
     def forward(self, x):
@@ -112,14 +126,23 @@ class DilConv(nn.Module):
     If dilation == 2, 3x3 conv => 5x5 receptive field
                       5x5 conv => 9x9 receptive field
     """
+
     def __init__(self, C_in, C_out, kernel_size, stride, padding, dilation, affine=True):
         super().__init__()
         self.net = nn.Sequential(
             nn.ReLU(),
-            nn.Conv2d(C_in, C_in, kernel_size, stride, padding, dilation=dilation, groups=C_in,
-                      bias=False),
+            nn.Conv2d(
+                C_in,
+                C_in,
+                kernel_size,
+                stride,
+                padding,
+                dilation=dilation,
+                groups=C_in,
+                bias=False,
+            ),
             nn.Conv2d(C_in, C_out, 1, stride=1, padding=0, bias=False),
-            nn.BatchNorm2d(C_out, affine=affine)
+            nn.BatchNorm2d(C_out, affine=affine),
         )
 
     def forward(self, x):
@@ -130,11 +153,12 @@ class SepConv(nn.Module):
     """ Depthwise separable conv
     DilConv(dilation=1) * 2
     """
+
     def __init__(self, C_in, C_out, kernel_size, stride, padding, affine=True):
         super().__init__()
         self.net = nn.Sequential(
             DilConv(C_in, C_in, kernel_size, stride, padding, dilation=1, affine=affine),
-            DilConv(C_in, C_out, kernel_size, 1, padding, dilation=1, affine=affine)
+            DilConv(C_in, C_out, kernel_size, 1, padding, dilation=1, affine=affine),
         )
 
     def forward(self, x):
@@ -156,17 +180,18 @@ class Zero(nn.Module):
 
     def forward(self, x):
         if self.stride == 1:
-            return x * 0.
+            return x * 0.0
 
         # re-sizing by stride
-        return x[:, :, ::self.stride, ::self.stride] * 0.
+        return x[:, :, :: self.stride, :: self.stride] * 0.0
 
 
 class FactorizedReduce(nn.Module):
     """
     Reduce feature map size by factorized pointwise(stride=2).
     """
-    def     __init__(self, C_in, C_out, affine=True):
+
+    def __init__(self, C_in, C_out, affine=True):
         super().__init__()
         self.relu = nn.ReLU()
         self.conv1 = nn.Conv2d(C_in, C_out // 2, 1, stride=2, padding=0, bias=False)
@@ -182,9 +207,12 @@ class FactorizedReduce(nn.Module):
 
 class MixedOp(nn.Module):
     """ Mixed operation """
+
     def __init__(self, C, stride):
         super().__init__()
-        self._ops = nn.ModuleList()#select 2 ops randomly for each couple of nodes at the start of the training
+        self._ops = (
+            nn.ModuleList()
+        )  # select 2 ops randomly for each couple of nodes at the start of the training
         for primitive in gt.PRIMITIVES:
             op = OPS[primitive](C, stride, affine=False)
             self._ops.append(op)
@@ -195,4 +223,7 @@ class MixedOp(nn.Module):
             x: input
             weights: weight for each operation
         """
-        return sum(w * op(x) for w, op in zip(weights, self._ops))#only sum for the 2 ops selected
+        return sum(
+            w * op(x) for w, op in zip(weights, self._ops)
+        )  # only sum for the 2 ops selected
+
