@@ -9,31 +9,23 @@ import torch.nn as nn
 from models import ops
 
 
-Genotype = namedtuple("Genotype", "normal normal_concat reduce reduce_concat")
+Genotype = namedtuple("Genotype", "normal normal_concat")
 
 PRIMITIVES = [
-    "max_pool_3x3",
-    "avg_pool_3x3",
-    "skip_connect",  # identity
-    "sep_conv_3x3",
-    "sep_conv_5x5",
-    "dil_conv_3x3",
-    "dil_conv_5x5",
-    "none",
-]
+    # "skip_connect",
+    "linear_to_10",
+    "relu",
+    #    "none"
+]  # identity
 
 
-def to_dag(C_in, gene, reduction):
+def to_dag(C_in, gene):
     """ generate discrete ops from gene """
     dag = nn.ModuleList()
     for edges in gene:
         row = nn.ModuleList()
         for op_name, s_idx in edges:
-            # reduction cell & from input nodes => stride = 2
-            stride = 2 if reduction and s_idx < 2 else 1
-            op = ops.OPS[op_name](C_in, stride, True)
-            if not isinstance(op, ops.Identity):  # Identity does not use drop path
-                op = nn.Sequential(op, ops.DropPath_())
+            op = ops.OPS[op_name](C_in)
             op.s_idx = s_idx
             row.append(op)
         dag.append(row)

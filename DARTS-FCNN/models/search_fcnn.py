@@ -19,13 +19,7 @@ def broadcast_list(l, device_ids):
 class SearchFCNN(nn.Module):
     """ Search CNN model """
 
-    def __init__(
-        self,
-        in_dim,
-        out_dim,
-        n_layers,
-        n_nodes=4,
-    ):
+    def __init__(self, in_dim, out_dim, n_layers, n_nodes=4):
         """
         Args:
             n_outputs: # of classes
@@ -44,34 +38,25 @@ class SearchFCNN(nn.Module):
 
         self.cells = nn.ModuleList()
         for i in range(n_layers):
-            cell = SearchCell(C_in, C_out, n_nodes)
+            cell = SearchCell(n_nodes)
             C_in = C_out
             self.cells.append(cell)
 
         self.linear = nn.Linear(C_out, self.out_dim)
 
     def forward(self, x, weights_normal):
-        s0 = s1 = x
-        for cell in self.cells:
-            s0, s1 = s1, cell(s0, s1, weights_normal)
 
-        # out = out.view(out.size(0), -1)  # flatten
-        logits = self.linear(out)
+        for cell in self.cells:
+            x = cell(x, weights_normal)
+
+        logits = self.linear(x)
         return logits
 
 
 class SearchFCNNController(nn.Module):
     """ SearchCNN controller supporting multi-gpu """
 
-    def __init__(
-        self,
-        in_dim,
-        out_dim,
-        n_layers,
-        criterion,
-        n_nodes=4,
-        device_ids=None,
-    ):
+    def __init__(self, in_dim, out_dim, n_layers, criterion, n_nodes=4, device_ids=None):
         super().__init__()
         self.n_nodes = n_nodes
         self.criterion = criterion
@@ -85,7 +70,10 @@ class SearchFCNNController(nn.Module):
         self.alpha_normal = nn.ParameterList()
 
         for i in range(n_nodes):
-            self.alpha_normal.append(nn.Parameter(1e-3 * torch.randn(i + 2, n_ops)))
+            # self.alpha_normal.append(nn.Parameter(1e-3 * torch.randn(i + 2, n_ops)))
+            self.alpha_normal.append(nn.Parameter(1e-3 * torch.randn(1, n_ops)))
+
+        print("len alpha: ", len(self.alpha_normal))
 
         # setup alphas list
         self._alphas = []
@@ -93,12 +81,7 @@ class SearchFCNNController(nn.Module):
             if "alpha" in n:
                 self._alphas.append((n, p))
 
-        self.net = SearchFCNN(
-            in_dim,
-            out_dim,
-            n_layers,
-            n_nodes,
-        )
+        self.net = SearchFCNN(in_dim, out_dim, n_layers, n_nodes)
 
     def forward(self, x):
         weights_normal = [F.softmax(alpha, dim=-1) for alpha in self.alpha_normal]
@@ -114,13 +97,13 @@ class SearchFCNNController(nn.Module):
         # replicate modules
         replicas = nn.parallel.replicate(self.net, self.device_ids)
         outputs = nn.parallel.parallel_apply(
-            replicas,
-            list(zip(xs, wnormal_copies)),
-            devices=self.device_ids,
+            replicas, list(zip(xs, wnormal_copies)), devices=self.device_ids
         )
         return nn.parallel.gather(outputs, self.device_ids[0])
 
     def loss(self, X, y):
+        # print("X: ", X.size())
+        # print("y: ", y.size())
         logits = self.forward(X)
         return self.criterion(logits, y)
 
@@ -143,13 +126,10 @@ class SearchFCNNController(nn.Module):
             handler.setFormatter(formatter)
 
     def genotype(self):
-        gene_normal = gt.parse(self.alpha_normal, k=2)
-        concat = range(2, 2 + self.n_nodes)  # concat all intermediate nodes
+        gene_normal = gt.parse(self.alpha_normal, k=1)
+        concat = range(1, 1 + self.n_nodes)  # concat all intermediate nodes
 
-        return gt.Genotype(
-            normal=gene_normal,
-            normal_concat=concat,
-        )
+        return gt.Genotype(normal=gene_normal, normal_concat=concat)
 
     def weights(self):
         return self.net.parameters()

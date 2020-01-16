@@ -8,6 +8,7 @@ class SearchCell(nn.Module):
     """ Cell for search
     Each edge is mixed and continuous relaxed.
     """
+
     def __init__(self, n_nodes):
         """
         Args:
@@ -22,20 +23,17 @@ class SearchCell(nn.Module):
         # generate dag
         self.dag = nn.ModuleList()
         for i in range(self.n_nodes):
+            # for j in range(1 + i):  # include 1 input nodes
+            # reduction should be used only for input node
             self.dag.append(nn.ModuleList())
-            for j in range(2+i): # include 2 input nodes
-                # reduction should be used only for input node
-                op = ops.MixedOp()
-                self.dag[i].append(op)
+            op = ops.MixedOp()
+            print("new mixop")
+            self.dag[-1].append(op)
 
-    def forward(self, s0, s1, w_dag):
-        s0 = self.preproc0(s0)
-        s1 = self.preproc1(s1)
+    def forward(self, x, w_dag):
+        # print("len zip: ", len(list(zip(self.dag, w_dag))))
+        for ops, w_list in zip(self.dag, w_dag):
+            x = sum(ops[i](s, w) for i, (s, w) in enumerate(zip([x], w_list)))
+            # x = op(x, w)
 
-        states = [s0, s1]
-        for edges, w_list in zip(self.dag, w_dag):
-            s_cur = sum(edges[i](s, w) for i, (s, w) in enumerate(zip(states, w_list)))
-            states.append(s_cur)
-
-        s_out = torch.cat(states[2:], dim=1)
-        return s_out
+        return x

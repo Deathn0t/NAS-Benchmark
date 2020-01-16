@@ -24,12 +24,14 @@ writer.add_text("config", config.as_markdown(), 0)
 logger = utils.get_logger("." + os.path.join(config.path, "{}.log".format(config.name)))
 config.print_params(logger.info)
 
+
 def linear_():
     p = lambda x: sum(x)
     a = 100
     b = 1
     minimas = lambda d: [-1 for i in range(d)]
     return p, (a, b), minimas
+
 
 def load_data(dim=10):
     """
@@ -51,11 +53,12 @@ def load_data(dim=10):
     valid_X = x[sep_index:]
     valid_y = y[sep_index:]
 
-    print(f'train_X shape: {np.shape(train_X)}')
-    print(f'train_y shape: {np.shape(train_y)}')
-    print(f'valid_X shape: {np.shape(valid_X)}')
-    print(f'valid_y shape: {np.shape(valid_y)}')
+    print(f"train_X shape: {np.shape(train_X)}")
+    print(f"train_y shape: {np.shape(train_y)}")
+    print(f"valid_X shape: {np.shape(valid_X)}")
+    print(f"valid_y shape: {np.shape(valid_y)}")
     return (train_X, train_y), (valid_X, valid_y)
+
 
 def main():
     logger.info("Logger is set - training start")
@@ -75,24 +78,22 @@ def main():
     #     config.dataset, config.data_path, cutout_length=0, validation=False
     # )
     (train_X, train_y), (valid_X, valid_y) = load_data()
-    n_outputs = len(train_y[0])
+    in_dim = len(train_X[0])
+    out_dim = len(train_y[0])
 
     train_X, train_y = torch.Tensor(train_X), torch.Tensor(train_y)
     train_data = torch.utils.data.TensorDataset(train_X, train_y)
 
     valid_X, valid_y = torch.Tensor(valid_X), torch.Tensor(valid_y)
     valid_data = torch.utils.data.TensorDataset(valid_X, valid_y)
-    print('n_outputs: ', n_outputs)
-    exit()
+    print("in_dim: ", in_dim)
+    print("out_dim: ", out_dim)
 
     # net_crit = nn.CrossEntropyLoss().to(device)
     net_crit = nn.MSELoss().to(device)
+    layers = 1
     model = SearchFCNNController(
-        config.init_channels,
-        n_outputs,
-        config.layers,
-        net_crit,
-        device_ids=config.gpus,
+        in_dim, out_dim, layers, net_crit, n_nodes=2, device_ids=config.gpus
     )
     model = model.to(device)
 
@@ -128,8 +129,14 @@ def main():
         num_workers=config.workers,
         pin_memory=True,
     )
+    # vis.
+    dataiter = iter(train_loader)
+    images, labels = dataiter.next()
+    writer.add_graph(model, [images[0]])
+    writer.close()
+
     valid_loader = torch.utils.data.DataLoader(
-        train_data,
+        valid_data,
         batch_size=config.batch_size,
         sampler=valid_sampler,
         num_workers=config.workers,
@@ -141,9 +148,8 @@ def main():
     architect = Architect(model, config.w_momentum, config.w_weight_decay)
 
     # training loop
-    best_top1 = 0.0
+    best_top1 = None
     for epoch in range(config.epochs):
-        lr_scheduler.step()
         lr = lr_scheduler.get_lr()[0]
 
         model.print_alphas(logger)
@@ -152,6 +158,7 @@ def main():
         train(
             train_loader, valid_loader, model, architect, w_optim, alpha_optim, lr, epoch
         )
+        lr_scheduler.step()
 
         # validation
         cur_step = (epoch + 1) * len(train_loader)
@@ -163,19 +170,18 @@ def main():
         logger.info("genotype = {}".format(genotype))
 
         # genotype as a image
-        plot_path = os.path.join(config.plot_path, "EP{:02d}".format(epoch + 1))
+        plot_path = "." + os.path.join(config.plot_path, "EP{:02d}".format(epoch + 1))
         caption = "Epoch {}".format(epoch + 1)
         plot(genotype.normal, plot_path + "-normal", caption)
-        plot(genotype.reduce, plot_path + "-reduce", caption)
 
         # save
-        if best_top1 < top1:
+        if best_top1 is None or best_top1 > top1:
             best_top1 = top1
             best_genotype = genotype
             is_best = True
         else:
             is_best = False
-        utils.save_checkpoint(model, config.path, is_best)
+        # utils.save_checkpoint(model, "." + config.path, is_best)
         print("")
 
     # restrict skip-co
@@ -208,8 +214,6 @@ def main():
 
 
 def train(train_loader, valid_loader, model, architect, w_optim, alpha_optim, lr, epoch):
-    top1 = utils.AverageMeter()
-    top5 = utils.AverageMeter()
     losses = utils.AverageMeter()
 
     cur_step = epoch * len(train_loader)
@@ -244,38 +248,24 @@ def train(train_loader, valid_loader, model, architect, w_optim, alpha_optim, lr
         nn.utils.clip_grad_norm_(model.weights(), config.w_grad_clip)
         w_optim.step()
 
-        prec1, prec5 = utils.accuracy(logits, trn_y, topk=(1, 5))
         losses.update(loss.item(), N)
-        top1.update(prec1.item(), N)
-        top5.update(prec5.item(), N)
 
         if step % config.print_freq == 0 or step == len(train_loader) - 1:
             logger.info(
-                "Train: [{:2d}/{}] Step {:03d}/{:03d} Loss {losses.avg:.3f} "
-                "Prec@(1,5) ({top1.avg:.1%}, {top5.avg:.1%})".format(
-                    epoch + 1,
-                    config.epochs,
-                    step,
-                    len(train_loader) - 1,
-                    losses=losses,
-                    top1=top1,
-                    top5=top5,
+                "Train: [{:2d}/{}] Step {:03d}/{:03d} Loss {losses.avg:.3f} ".format(
+                    epoch + 1, config.epochs, step, len(train_loader) - 1, losses=losses
                 )
             )
 
         writer.add_scalar("train/loss", loss.item(), cur_step)
-        writer.add_scalar("train/top1", prec1.item(), cur_step)
-        writer.add_scalar("train/top5", prec5.item(), cur_step)
         cur_step += 1
 
     logger.info(
-        "Train: [{:2d}/{}] Final Prec@1 {:.4%}".format(epoch + 1, config.epochs, top1.avg)
+        "Train: [{:2d}/{}] Final Loss {:.3f}".format(epoch + 1, config.epochs, losses.avg)
     )
 
 
 def validate(valid_loader, model, epoch, cur_step):
-    top1 = utils.AverageMeter()
-    top5 = utils.AverageMeter()
     losses = utils.AverageMeter()
 
     model.eval()
@@ -287,34 +277,26 @@ def validate(valid_loader, model, epoch, cur_step):
 
             logits = model(X)
             loss = model.criterion(logits, y)
-            prec1, prec5 = utils.accuracy(logits, y, topk=(1, 5))
             losses.update(loss.item(), N)
-            top1.update(prec1.item(), N)
-            top5.update(prec5.item(), N)
 
             if step % config.print_freq == 0 or step == len(valid_loader) - 1:
                 logger.info(
-                    "Valid: [{:2d}/{}] Step {:03d}/{:03d} Loss {losses.avg:.3f} "
-                    "Prec@(1,5) ({top1.avg:.1%}, {top5.avg:.1%})".format(
+                    "Valid: [{:2d}/{}] Step {:03d}/{:03d} Loss {losses.avg:.3f} ".format(
                         epoch + 1,
                         config.epochs,
                         step,
                         len(valid_loader) - 1,
                         losses=losses,
-                        top1=top1,
-                        top5=top5,
                     )
                 )
 
     writer.add_scalar("val/loss", losses.avg, cur_step)
-    writer.add_scalar("val/top1", top1.avg, cur_step)
-    writer.add_scalar("val/top5", top5.avg, cur_step)
 
     logger.info(
-        "Valid: [{:2d}/{}] Final Prec@1 {:.4%}".format(epoch + 1, config.epochs, top1.avg)
+        "Valid: [{:2d}/{}] Final Loss {:.3f}".format(epoch + 1, config.epochs, losses.avg)
     )
 
-    return top1.avg
+    return losses.avg
 
 
 if __name__ == "__main__":
