@@ -31,18 +31,13 @@ class SearchFCNN(nn.Module):
         self.out_dim = out_dim
         self.n_layers = n_layers
 
-        # for the first cell, stem is used for both s0 and s1
-        # [!] C_pp and C_p is output channel size, but C_cur is input channel size.
-        C_in = self.in_dim
-        C_out = 10
-
         self.cells = nn.ModuleList()
         for i in range(n_layers):
-            cell = SearchCell(n_nodes)
-            C_in = C_out
+            cell = SearchCell(in_dim, n_nodes)
+            in_dim = cell.out_features
             self.cells.append(cell)
-
-        self.linear = nn.Linear(C_out, self.out_dim)
+        print("cell_in: ", in_dim)
+        self.linear = nn.Linear(in_dim, self.out_dim)
 
     def forward(self, x, weights_normal):
 

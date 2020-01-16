@@ -11,12 +11,7 @@ from models import ops
 
 Genotype = namedtuple("Genotype", "normal normal_concat")
 
-PRIMITIVES = [
-    # "skip_connect",
-    "linear_to_10",
-    "relu",
-    #    "none"
-]  # identity
+PRIMITIVES = list(ops.OPS.keys())
 
 
 def to_dag(C_in, gene):

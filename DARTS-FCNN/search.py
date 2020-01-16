@@ -33,6 +33,14 @@ def linear_():
     return p, (a, b), minimas
 
 
+def polynome_2():
+    p = lambda x: -sum([x_i ** 2 for x_i in x])
+    a = -50
+    b = 50
+    minimas = lambda d: [0 for i in range(d)]
+    return p, (a, b), minimas
+
+
 def load_data(dim=10):
     """
     Generate data for linear function -sum(x_i).
@@ -41,7 +49,8 @@ def load_data(dim=10):
     """
     size = 100000
     prop = 0.80
-    f, (a, b), _ = linear_()
+    # f, (a, b), _ = linear_()
+    f, (a, b), _ = polynome_2()
     d = b - a
     x = np.array([a + np.random.random(dim) * d for i in range(size)])
     y = np.array([[f(v)] for v in x])
@@ -105,11 +114,13 @@ def main():
         weight_decay=config.w_weight_decay,
     )
     # alphas optimizer
+    # alpha_lr = config.alpha_lr
+    alpha_lr = 0.01
     alpha_optim = torch.optim.Adam(
         model.alphas(),
-        config.alpha_lr,
+        alpha_lr,
         betas=(0.5, 0.999),
-        weight_decay=config.alpha_weight_decay,
+        # weight_decay=config.alpha_weight_decay,
     )
 
     # split data to train/validation
@@ -193,6 +204,13 @@ def main():
             if primitive_indices[j].item() == 2:
                 count = count + 1
                 indices.append((i, j))
+
+    #     Traceback (most recent call last):
+    #   File "search.py", line 314, in <module>
+    #     main()
+    #   File "search.py", line 204, in main
+    #     if primitive_indices[j].item() == 2:
+    # IndexError: index 1 is out of bounds for dimension 0 with size 1
 
     while count > 2:
         alpha_min, indice_min = model.alpha_normal[indices[0][0]][indices[0][1], 2], 0
