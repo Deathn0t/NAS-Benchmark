@@ -36,7 +36,6 @@ class SearchFCNN(nn.Module):
             cell = SearchCell(in_dim, n_nodes)
             in_dim = cell.out_features
             self.cells.append(cell)
-        print("cell_in: ", in_dim)
         self.linear = nn.Linear(in_dim, self.out_dim)
 
     def forward(self, x, weights_normal):
@@ -97,8 +96,8 @@ class SearchFCNNController(nn.Module):
         return nn.parallel.gather(outputs, self.device_ids[0])
 
     def loss(self, X, y):
-        # print("X: ", X.size())
-        # print("y: ", y.size())
+        # print("X: ", X.size(), ", dtype: ", X.type())
+        # print("y: ", y.size(), ", dtype: ", y.type())
         logits = self.forward(X)
         return self.criterion(logits, y)
 

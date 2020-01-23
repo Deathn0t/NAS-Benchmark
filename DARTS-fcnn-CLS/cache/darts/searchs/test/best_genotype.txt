@@ -1,0 +1,1 @@
+Genotype(normal=[[('linear_12', 0)], [('linear_10', 0)], [('identity', 0)], [('identity', 0)]], normal_concat=range(1, 5))

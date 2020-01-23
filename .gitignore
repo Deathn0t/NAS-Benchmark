@@ -7,3 +7,4 @@ data/
 events.out.tfevents.*
 *.dot
 *.png
+EP*-normal

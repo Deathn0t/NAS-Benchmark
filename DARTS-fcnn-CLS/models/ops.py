@@ -8,6 +8,8 @@ OPS = {
     # "none": lambda C: Zero(),
     "identity": lambda in_f: Identity(in_f, 20),
     "ReLu": lambda in_f: ReLu(in_f, 20),
+    "Sigmoid": lambda in_f: Sigmoid(in_f, 20),
+    "Tanh": lambda in_f: Tanh(in_f, 20),
     "linear_10": lambda C: Linear(C, 10, (0, 10)),
     "linear_12": lambda C: Linear(C, 12, (0, 8)),
     "linear_14": lambda C: Linear(C, 14, (0, 6)),
@@ -36,11 +38,35 @@ class ReLu(nn.Module):
         super().__init__()
         self.in_features = None
         self.out_features = None
-        self.relu = torch.nn.ReLU(inplace)
+        self.act = torch.nn.ReLU(inplace)
         self.p = nn.ConstantPad1d((0, out_features - in_features), 0)
 
     def forward(self, x):
-        return self.p(self.relu(x))
+        return self.p(self.act(x))
+
+
+class Sigmoid(nn.Module):
+    def __init__(self, in_features, out_features):
+        super().__init__()
+        self.in_features = None
+        self.out_features = None
+        self.act = torch.nn.Sigmoid()
+        self.p = nn.ConstantPad1d((0, out_features - in_features), 0)
+
+    def forward(self, x):
+        return self.p(self.act(x))
+
+
+class Tanh(nn.Module):
+    def __init__(self, in_features, out_features):
+        super().__init__()
+        self.in_features = None
+        self.out_features = None
+        self.act = torch.nn.Tanh()
+        self.p = nn.ConstantPad1d((0, out_features - in_features), 0)
+
+    def forward(self, x):
+        return self.p(self.act(x))
 
 
 class Identity(nn.Module):

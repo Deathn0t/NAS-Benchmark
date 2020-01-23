@@ -10,6 +10,10 @@ from models.search_fcnn import SearchFCNNController
 from architect import Architect
 from visualize import plot
 import random
+from sklearn.datasets import make_moons
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
+from sklearn.pipeline import Pipeline
 
 config = SearchConfig()
 
@@ -25,6 +29,18 @@ logger = utils.get_logger("." + os.path.join(config.path, "{}.log".format(config
 config.print_params(logger.info)
 
 
+def minmaxstdscaler():
+    """Use MinMaxScaler then StandardScaler.
+    Returns:
+        preprocessor:
+    """
+
+    preprocessor = Pipeline(
+        [("minmaxscaler", MinMaxScaler()), ("stdscaler", StandardScaler())]
+    )
+    return preprocessor
+
+
 def linear_():
     p = lambda x: sum(x)
     a = 100
@@ -35,32 +51,35 @@ def linear_():
 
 def polynome_2():
     p = lambda x: -sum([x_i ** 2 for x_i in x])
-    a = -50
-    b = 50
+    a = -2
+    b = 2
     minimas = lambda d: [0 for i in range(d)]
     return p, (a, b), minimas
 
 
-def load_data(dim=10):
+def load_data(dim=2):
     """
     Generate data for linear function -sum(x_i).
     Return:
         Tuple of Numpy arrays: ``(train_X, train_y), (valid_X, valid_y)``.
     """
-    size = 100000
-    prop = 0.80
+    n_samples = 1000
+    test_size = 0.33
     # f, (a, b), _ = linear_()
     f, (a, b), _ = polynome_2()
     d = b - a
-    x = np.array([a + np.random.random(dim) * d for i in range(size)])
-    y = np.array([[f(v)] for v in x])
+    X = np.array(
+        [a + np.random.random(dim) * d for i in range(n_samples)], dtype=np.float32
+    )
+    y = np.array([[f(v)] for v in X], dtype=np.float32)
 
-    sep_index = int(prop * size)
-    train_X = x[:sep_index]
-    train_y = y[:sep_index]
+    train_X, valid_X, train_y, valid_y = train_test_split(
+        X, y, test_size=test_size, random_state=42
+    )
 
-    valid_X = x[sep_index:]
-    valid_y = y[sep_index:]
+    preproc = minmaxstdscaler()
+    train_X = preproc.fit_transform(train_X)
+    valid_X = preproc.transform(valid_X)
 
     print(f"train_X shape: {np.shape(train_X)}")
     print(f"train_y shape: {np.shape(train_y)}")
@@ -80,39 +99,38 @@ def main():
     torch.manual_seed(config.seed)
     # torch.cuda.manual_seed_all(config.seed)
 
-    torch.backends.cudnn.benchmark = True
+    torch.backends.cudnn.benchmark = False
 
     # get data with meta info
-    # input_size, input_channels, n_classes, train_data = utils.get_data(
-    #     config.dataset, config.data_path, cutout_length=0, validation=False
-    # )
     (train_X, train_y), (valid_X, valid_y) = load_data()
-    in_dim = len(train_X[0])
-    out_dim = len(train_y[0])
+    in_dim = np.shape(train_X)[1]
+    out_dim = np.shape(train_y)[1]
+    # out_dim = train_y.max() + 1
 
-    train_X, train_y = torch.Tensor(train_X), torch.Tensor(train_y)
+    train_X, train_y = (torch.tensor(train_X, dtype=torch.float), torch.tensor(train_y))
     train_data = torch.utils.data.TensorDataset(train_X, train_y)
 
-    valid_X, valid_y = torch.Tensor(valid_X), torch.Tensor(valid_y)
+    valid_X, valid_y = (torch.tensor(valid_X, dtype=torch.float), torch.tensor(valid_y))
     valid_data = torch.utils.data.TensorDataset(valid_X, valid_y)
     print("in_dim: ", in_dim)
     print("out_dim: ", out_dim)
 
-    # net_crit = nn.CrossEntropyLoss().to(device)
     net_crit = nn.MSELoss().to(device)
     layers = 1
+    n_nodes = 4
     model = SearchFCNNController(
-        in_dim, out_dim, layers, net_crit, n_nodes=2, device_ids=config.gpus
+        in_dim, out_dim, layers, net_crit, n_nodes=n_nodes, device_ids=config.gpus
     )
     model = model.to(device)
 
     # weights optimizer
-    w_optim = torch.optim.SGD(
-        model.weights(),
-        config.w_lr,
-        momentum=config.w_momentum,
-        weight_decay=config.w_weight_decay,
-    )
+    # w_optim = torch.optim.SGD(
+    #     model.weights(),
+    #     config.w_lr,
+    #     momentum=config.w_momentum,
+    #     weight_decay=config.w_weight_decay,
+    # )
+    w_optim = torch.optim.RMSprop(model.weights())
     # alphas optimizer
     # alpha_lr = config.alpha_lr
     alpha_lr = 0.01
@@ -126,7 +144,6 @@ def main():
     # split data to train/validation
     n_train = len(train_data)
     n_valid = len(valid_data)
-    # split = n_train // 2
     indices_train = list(range(n_train))
     indices_valid = list(range(n_valid))
     random.shuffle(indices_train)
@@ -141,10 +158,10 @@ def main():
         pin_memory=True,
     )
     # vis.
-    dataiter = iter(train_loader)
-    images, labels = dataiter.next()
-    writer.add_graph(model, [images[0]])
-    writer.close()
+    # dataiter = iter(train_loader)
+    # images, labels = dataiter.next()
+    # writer.add_graph(model, [images[0]])
+    # writer.close()
 
     valid_loader = torch.utils.data.DataLoader(
         valid_data,
@@ -160,7 +177,8 @@ def main():
 
     # training loop
     best_top1 = None
-    for epoch in range(config.epochs):
+    epochs = config.epochs
+    for epoch in range(epochs):
         lr = lr_scheduler.get_lr()[0]
 
         model.print_alphas(logger)
@@ -186,7 +204,7 @@ def main():
         plot(genotype.normal, plot_path + "-normal", caption)
 
         # save
-        if best_top1 is None or best_top1 > top1:
+        if best_top1 is None or best_top1 < top1:
             best_top1 = top1
             best_genotype = genotype
             is_best = True
@@ -195,44 +213,19 @@ def main():
         # utils.save_checkpoint(model, "." + config.path, is_best)
         print("")
 
-    # restrict skip-co
-    count = 0
-    indices = []
-    for i in range(4):
-        _, primitive_indices = torch.topk(model.alpha_normal[i][:, :], 1)
-        for j in range(2 + i):
-            if primitive_indices[j].item() == 2:
-                count = count + 1
-                indices.append((i, j))
-
-    #     Traceback (most recent call last):
-    #   File "search.py", line 314, in <module>
-    #     main()
-    #   File "search.py", line 204, in main
-    #     if primitive_indices[j].item() == 2:
-    # IndexError: index 1 is out of bounds for dimension 0 with size 1
-
-    while count > 2:
-        alpha_min, indice_min = model.alpha_normal[indices[0][0]][indices[0][1], 2], 0
-        for i in range(1, count):
-            alpha_c = model.alpha_normal[indices[i][0]][indices[i][1], 2]
-            if alpha_c < alpha_min:
-                alpha_min, indice_min = alpha_c, i
-        model.alpha_normal[indices[indice_min][0]][indices[indice_min][1], 2] = 0
-        indices.pop(indice_min)
-        print(indices)
-        count = count - 1
-
     best_genotype = model.genotype()
 
-    with open(config.path + "/best_genotype.txt", "w") as f:
+    with open("." + config.path + "/best_genotype.txt", "w") as f:
         f.write(str(best_genotype))
-    logger.info("Final best Prec@1 = {:.4%}".format(best_top1))
+
+    logger.info("Final best TopR2@1 = {:.3f}".format(best_top1))
+    print("best_top1: ", best_top1)
     logger.info("Best Genotype = {}".format(best_genotype))
 
 
 def train(train_loader, valid_loader, model, architect, w_optim, alpha_optim, lr, epoch):
     losses = utils.AverageMeter()
+    top1 = utils.AverageMeter()
 
     cur_step = epoch * len(train_loader)
     writer.add_scalar("train/lr", lr, cur_step)
@@ -266,7 +259,10 @@ def train(train_loader, valid_loader, model, architect, w_optim, alpha_optim, lr
         nn.utils.clip_grad_norm_(model.weights(), config.w_grad_clip)
         w_optim.step()
 
+        r2score = utils.r2score(logits, trn_y)
+
         losses.update(loss.item(), N)
+        top1.update(r2score, N)
 
         if step % config.print_freq == 0 or step == len(train_loader) - 1:
             logger.info(
@@ -276,6 +272,8 @@ def train(train_loader, valid_loader, model, architect, w_optim, alpha_optim, lr
             )
 
         writer.add_scalar("train/loss", loss.item(), cur_step)
+        writer.add_scalar("train/top1-r2score", r2score, cur_step)
+
         cur_step += 1
 
     logger.info(
@@ -285,6 +283,7 @@ def train(train_loader, valid_loader, model, architect, w_optim, alpha_optim, lr
 
 def validate(valid_loader, model, epoch, cur_step):
     losses = utils.AverageMeter()
+    top1 = utils.AverageMeter()
 
     model.eval()
 
@@ -295,7 +294,10 @@ def validate(valid_loader, model, epoch, cur_step):
 
             logits = model(X)
             loss = model.criterion(logits, y)
+            r2score = utils.r2score(logits, y)
+
             losses.update(loss.item(), N)
+            top1.update(r2score, N)
 
             if step % config.print_freq == 0 or step == len(valid_loader) - 1:
                 logger.info(
@@ -309,12 +311,13 @@ def validate(valid_loader, model, epoch, cur_step):
                 )
 
     writer.add_scalar("val/loss", losses.avg, cur_step)
+    writer.add_scalar("val/top1-r2score", top1.avg, cur_step)
 
     logger.info(
         "Valid: [{:2d}/{}] Final Loss {:.3f}".format(epoch + 1, config.epochs, losses.avg)
     )
 
-    return losses.avg
+    return top1.avg
 
 
 if __name__ == "__main__":

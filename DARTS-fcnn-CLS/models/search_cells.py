@@ -19,9 +19,6 @@ class SearchCell(nn.Module):
         self.in_features = in_features
         self.out_features = None
 
-        # If previous cell is reduction cell, current input size does not match with
-        # output size of cell[k-2]. So the output[k-2] should be reduced by preprocessing.
-
         # generate dag
         self.dag = nn.ModuleList()
         for i in range(self.n_nodes):
@@ -37,5 +34,4 @@ class SearchCell(nn.Module):
         # print("len zip: ", len(list(zip(self.dag, w_dag))))
         for ops, w_list in zip(self.dag, w_dag):
             x = sum(ops[i](s, w) for i, (s, w) in enumerate(zip([x], w_list)))
-
         return x
