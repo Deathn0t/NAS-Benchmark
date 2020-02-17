@@ -121,6 +121,11 @@ class MixedOp(nn.Module):
         #     else:
         #         res += w * op(x)
         # return res
+        # i = torch.argmax(weights)
+        # weights = weights * 0.0
+        # print(weights.shape)
+        # weights[i] = 1.0
+        # return self._ops[i](x)
         return sum(
             w * op(x) for w, op in zip(weights, self._ops)
         )  # only sum for the 2 ops selected

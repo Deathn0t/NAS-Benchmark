@@ -57,7 +57,7 @@ def polynome_2():
     return p, (a, b), minimas
 
 
-def load_data(dim=2):
+def load_data(dim=1):
     """
     Generate data for linear function -sum(x_i).
     Return:
@@ -124,21 +124,22 @@ def main():
     model = model.to(device)
 
     # weights optimizer
-    # w_optim = torch.optim.SGD(
-    #     model.weights(),
-    #     config.w_lr,
-    #     momentum=config.w_momentum,
-    #     weight_decay=config.w_weight_decay,
-    # )
-    w_optim = torch.optim.RMSprop(model.weights())
+    w_optim = torch.optim.SGD(
+        model.weights(),
+        config.w_lr,
+        momentum=config.w_momentum,
+        weight_decay=config.w_weight_decay,
+    )
+    # w_optim = torch.optim.RMSprop(model.weights())
+
     # alphas optimizer
-    # alpha_lr = config.alpha_lr
-    alpha_lr = 0.01
+    alpha_lr = config.alpha_lr
+    # alpha_lr = 0.01
     alpha_optim = torch.optim.Adam(
         model.alphas(),
         alpha_lr,
         betas=(0.5, 0.999),
-        # weight_decay=config.alpha_weight_decay,
+        weight_decay=config.alpha_weight_decay,
     )
 
     # split data to train/validation
@@ -173,7 +174,9 @@ def main():
     lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         w_optim, config.epochs, eta_min=config.w_lr_min
     )
-    architect = Architect(model, config.w_momentum, config.w_weight_decay)
+    architect = Architect(
+        model, config.w_momentum, config.w_weight_decay, allow_unused=False
+    )
 
     # training loop
     best_top1 = None
@@ -219,7 +222,6 @@ def main():
         f.write(str(best_genotype))
 
     logger.info("Final best TopR2@1 = {:.3f}".format(best_top1))
-    print("best_top1: ", best_top1)
     logger.info("Best Genotype = {}".format(best_genotype))
 
 
