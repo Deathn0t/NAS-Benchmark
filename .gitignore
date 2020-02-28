@@ -8,3 +8,7 @@ events.out.tfevents.*
 *.dot
 *.png
 EP*-normal
+*.json
+*.ipynb
+*.txt
+*.gif
